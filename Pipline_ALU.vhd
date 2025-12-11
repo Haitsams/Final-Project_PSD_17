@@ -1,105 +1,106 @@
----------------------------------------------------------------------
---  BAGIAN HAITSAM — Hazard Detection + Stall Logic
----------------------------------------------------------------------
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
 
-signal hazard_detected : std_logic;
+    -------------------------------------------------------------------------
+    -- Haitsam - Entity
+    -------------------------------------------------------------------------
 
-process(id_rs1, id_rs2, ex_rd, ex_valid, fg_rd, fg_valid, wb_rd, wb_valid)
+entity pipeline_alu is
+    Port (
+        clk         : in  STD_LOGIC;
+        rst         : in  STD_LOGIC;
+        instr_in    : in  STD_LOGIC_VECTOR(15 downto 0); -- Input Instruksi
+        instr_valid : in  STD_LOGIC;                     -- Penanda ada instruksi masuk
+        stall_out   : out STD_LOGIC;                     -- Sinyal ke Fetch Unit untuk stop kirim instruksi
+        result_out  : out STD_LOGIC_VECTOR(15 downto 0); -- Output hasil (untuk debug/monitoring)
+        flags_out   : out STD_LOGIC_VECTOR(3 downto 0)   -- Z, C, V, N
+    );
+end pipeline_alu;
+
+architecture Behavioral of pipeline_alu is
+    -- Deklarasikan semua sinyal pipeline
+    -- Definisi Opcode
+    constant OP_ADD : std_logic_vector(3 downto 0) := "0000";
+    constant OP_SUB : std_logic_vector(3 downto 0) := "0001";
+    constant OP_AND : std_logic_vector(3 downto 0) := "0010";
+    constant OP_OR  : std_logic_vector(3 downto 0) := "0011";
+    constant OP_XOR : std_logic_vector(3 downto 0) := "0100";
+    constant OP_NOP : std_logic_vector(3 downto 0) := "1111";
+
+    -- Register File (16 Register, 16-bit lebar)
+    type reg_array is array (0 to 15) of std_logic_vector(15 downto 0);
+    signal reg_file : reg_array := (others => (others => '0'));
+
+    -- Pipeline Registers / Signals
+    -- Stage 1: ID Signals
+    signal id_opcode : std_logic_vector(3 downto 0);
+    signal id_rd     : std_logic_vector(3 downto 0);
+    signal id_rs1    : std_logic_vector(3 downto 0);
+    signal id_rs2    : std_logic_vector(3 downto 0);
+    signal id_data1  : std_logic_vector(15 downto 0);
+    signal id_data2  : std_logic_vector(15 downto 0);
+    signal hazard_detected : std_logic;
+
+    -- Stage 2: EX Signals (Output dari ID/Register pipeline ID_EX)
+    signal ex_opcode : std_logic_vector(3 downto 0);
+    signal ex_rd     : std_logic_vector(3 downto 0);
+    signal ex_data1  : std_logic_vector(15 downto 0);
+    signal ex_data2  : std_logic_vector(15 downto 0);
+    signal ex_result_raw : std_logic_vector(16 downto 0); -- 17 bit for carry
+    signal ex_valid  : std_logic;
+
+    -- Stage 3: FG Signals (Output dari EX/Register pipeline EX_FG)
+    signal fg_rd     : std_logic_vector(3 downto 0);
+    signal fg_result : std_logic_vector(15 downto 0);
+    signal fg_flags  : std_logic_vector(3 downto 0); -- Z, C, V, N
+    signal fg_valid  : std_logic;
+
+    -- Stage 4: WB Signals (Output dari FG/Register pipeline FG_WB)
+    signal wb_rd     : std_logic_vector(3 downto 0);
+    signal wb_result : std_logic_vector(15 downto 0);
+    signal wb_valid  : std_logic;
+    signal wb_write_en : std_logic;
+
 begin
-    hazard_detected <= '0';
 
-    if ex_valid = '1' and (ex_rd = id_rs1 or ex_rd = id_rs2) then
-        hazard_detected <= '1';
-    end if;
+    -------------------------------------------------------------------------
+    -- Haitsam - Instruction Decode & Hazard Detection
+    -------------------------------------------------------------------------
+    
+    -- Parsing Instruksi
+    id_opcode <= instr_in(15 downto 12);
+    id_rd     <= instr_in(11 downto 8);
+    id_rs1    <= instr_in(7 downto 4);
+    id_rs2    <= instr_in(3 downto 0);
 
-    if fg_valid = '1' and (fg_rd = id_rs1 or fg_rd = id_rs2) then
-        hazard_detected <= '1';
-    end if;
+    -- HAZARD DETECTION LOGIC (RAW - Read After Write)
+    -- Cek apakah register sumber (Rs1/Rs2) instruksi saat ini sedang diproses
+    -- oleh instruksi sebelumnya di tahap EX, FG, atau WB.
+    process(id_rs1, id_rs2, ex_rd, ex_valid, fg_rd, fg_valid, wb_rd, wb_valid)
+    begin
+        hazard_detected <= '0';
+        
+        -- Cek konflik dengan stage EX
+        if ex_valid = '1' and (ex_rd = id_rs1 or ex_rd = id_rs2) then
+            hazard_detected <= '1';
+        end if;
 
-    if wb_valid = '1' and (wb_rd = id_rs1 or wb_rd = id_rs2) then
-        hazard_detected <= '1';
-    end if;
-end process;
+        -- Cek konflik dengan stage FG
+        if fg_valid = '1' and (fg_rd = id_rs1 or fg_rd = id_rs2) then
+            hazard_detected <= '1';
+        end if;
+
+        -- Cek konflik dengan stage WB (kecuali jika WB baru saja selesai menulis di clock edge yang sama, 
+        -- tapi untuk simplifikasi kita stall juga)
+        if wb_valid = '1' and (wb_rd = id_rs1 or wb_rd = id_rs2) then
+            hazard_detected <= '1';
+        end if;
+    end process;
 
     stall_out <= hazard_detected;
 
----------------------------------------------------------------------
--- BAGIAN SABBIA — ALU (EX Stage)
----------------------------------------------------------------------
-
-process(ex_opcode, ex_data1, ex_data2)
-    variable v1 : signed(16 downto 0);
-    variable v2 : signed(16 downto 0);
-begin
-    v1 := resize(signed(ex_data1), 17);
-    v2 := resize(signed(ex_data2), 17);
-
-    case ex_opcode is
-        when "0000" => ex_result_raw <= std_logic_vector(v1 + v2); -- ADD
-        when "0001" => ex_result_raw <= std_logic_vector(v1 - v2); -- SUB
-        when "0010" => ex_result_raw(15 downto 0) <= ex_data1 and ex_data2; -- AND
-        when "0011" => ex_result_raw(15 downto 0) <= ex_data1 or  ex_data2; -- OR
-        when "0100" => ex_result_raw(15 downto 0) <= ex_data1 xor ex_data2; -- XOR
-        when others => ex_result_raw <= (others => '0');
-    end case;
-end process;
-
-
-
----------------------------------------------------------------------
--- BAGIAN SABBIA — EX → FG Pipeline Register
----------------------------------------------------------------------
-
-process(clk)
-begin
-    if rising_edge(clk) then
-        if rst = '1' then
-            fg_valid  <= '0';
-            fg_result <= (others => '0');
-            fg_rd     <= (others => '0');
-
-        else
-            fg_valid  <= ex_valid;
-            fg_result <= ex_result_raw(15 downto 0);
-            fg_rd     <= ex_rd;
-        end if;
-    end if;
-end process;
-
----------------------------------------------------------------------
---  BAGIAN HAITSAM — FLAG GENERATION (FG Stage)
----------------------------------------------------------------------
-
-process(fg_result, fg_valid)
-begin
-    if fg_valid = '1' then
-        fg_flags(3) <= '1' when fg_result = x"0000" else '0'; -- Zero
-        fg_flags(0) <= fg_result(15);                        -- Negative
-        fg_flags(2) <= '0'; -- Carry (simplified)
-        fg_flags(1) <= '0'; -- Overflow (simplified)
-    else
-        fg_flags <= "0000";
-    end if;
-end process;
-
----------------------------------------------------------------------
--- BAGIAN SABBIA — FG → WB Pipeline Register + WB Stage
----------------------------------------------------------------------
-
-process(clk)
-begin
-    if rising_edge(clk) then
-        if rst = '1' then
-            wb_valid  <= '0';
-            wb_rd     <= (others => '0');
-            wb_result <= (others => '0');
-            flags_out <= (others => '0');
-
-        else
-            wb_valid  <= fg_valid;
-            wb_rd     <= fg_rd;
-            wb_result <= fg_result;
-            flags_out <= fg_flags;
-        end if;
-    end if;
-end process;
+    -- Membaca Data dari Register File (Asynchronous Read)
+    id_data1 <= reg_file(to_integer(unsigned(id_rs1)));
+    id_data2 <= reg_file(to_integer(unsigned(id_rs2)));
+>>>>>>> 332f8f12bea7ca1b534eed8d6d0189599e2346c0
