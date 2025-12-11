@@ -103,4 +103,3 @@ begin
     -- Membaca Data dari Register File (Asynchronous Read)
     id_data1 <= reg_file(to_integer(unsigned(id_rs1)));
     id_data2 <= reg_file(to_integer(unsigned(id_rs2)));
->>>>>>> 332f8f12bea7ca1b534eed8d6d0189599e2346c0
