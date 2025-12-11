@@ -152,3 +152,25 @@ begin
     end process;
 
 
+        -------------------------------------------------------------------------
+    -- Sabbia - PIPELINE REGISTER: FG -> WB
+    -------------------------------------------------------------------------
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if rst = '1' then
+                wb_valid  <= '0';
+                wb_rd     <= (others => '0');
+                wb_result <= (others => '0');
+                flags_out <= (others => '0');
+            else
+                wb_valid  <= fg_valid;
+                wb_rd     <= fg_rd;
+                wb_result <= fg_result;
+                flags_out <= fg_flags; -- Output flags ke port luar
+            end if;
+        end if;
+    end process;
+
+
+
