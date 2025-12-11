@@ -103,3 +103,74 @@ begin
     -- Membaca Data dari Register File (Asynchronous Read)
     id_data1 <= reg_file(to_integer(unsigned(id_rs1)));
     id_data2 <= reg_file(to_integer(unsigned(id_rs2)));
+
+        -------------------------------------------------------------------------
+    -- Sabbia - Execute (ALU Operations)
+    -------------------------------------------------------------------------
+    process(ex_opcode, ex_data1, ex_data2)
+        variable v_data1 : signed(16 downto 0);
+        variable v_data2 : signed(16 downto 0);
+    begin
+        v_data1 := resize(signed(ex_data1), 17);
+        v_data2 := resize(signed(ex_data2), 17);
+        ex_result_raw <= (others => '0');
+
+        case ex_opcode is
+            when OP_ADD =>
+                ex_result_raw <= std_logic_vector(v_data1 + v_data2);
+            when OP_SUB =>
+                ex_result_raw <= std_logic_vector(v_data1 - v_data2);
+            when OP_AND =>
+                ex_result_raw(15 downto 0) <= ex_data1 and ex_data2;
+            when OP_OR  =>
+                ex_result_raw(15 downto 0) <= ex_data1 or ex_data2;
+            when OP_XOR =>
+                ex_result_raw(15 downto 0) <= ex_data1 xor ex_data2;
+            when others =>
+                ex_result_raw <= (others => '0');
+        end case;
+    end process;
+
+
+        -------------------------------------------------------------------------
+    -- Sabbia - Pipeline Register: EX -> FG
+    -------------------------------------------------------------------------
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if rst = '1' then
+                fg_valid  <= '0';
+                fg_result <= (others => '0');
+                fg_rd     <= (others => '0');
+            else
+                fg_valid  <= ex_valid;
+                fg_result <= ex_result_raw(15 downto 0);
+                fg_rd     <= ex_rd;
+                -- Raw result dipakai untuk perhitungan flag di stage berikutnya
+            end if;
+        end if;
+    end process;
+
+
+        -------------------------------------------------------------------------
+    -- Sabbia - PIPELINE REGISTER: FG -> WB
+    -------------------------------------------------------------------------
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if rst = '1' then
+                wb_valid  <= '0';
+                wb_rd     <= (others => '0');
+                wb_result <= (others => '0');
+                flags_out <= (others => '0');
+            else
+                wb_valid  <= fg_valid;
+                wb_rd     <= fg_rd;
+                wb_result <= fg_result;
+                flags_out <= fg_flags; -- Output flags ke port luar
+            end if;
+        end if;
+    end process;
+
+
+
