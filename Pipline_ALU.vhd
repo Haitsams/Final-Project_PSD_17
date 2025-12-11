@@ -131,3 +131,24 @@ begin
         end case;
     end process;
 
+
+        -------------------------------------------------------------------------
+    -- Sabbia - Pipeline Register: EX -> FG
+    -------------------------------------------------------------------------
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if rst = '1' then
+                fg_valid  <= '0';
+                fg_result <= (others => '0');
+                fg_rd     <= (others => '0');
+            else
+                fg_valid  <= ex_valid;
+                fg_result <= ex_result_raw(15 downto 0);
+                fg_rd     <= ex_rd;
+                -- Raw result dipakai untuk perhitungan flag di stage berikutnya
+            end if;
+        end if;
+    end process;
+
+
