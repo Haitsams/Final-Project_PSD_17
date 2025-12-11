@@ -1,5 +1,27 @@
 ---------------------------------------------------------------------
--- 🔵 BAGIAN NOVA — Register File + ID Stage (Decode)
+--  BAGIAN HAITSAM — 
+---------------------------------------------------------------------
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity pipeline_alu is
+    Port (
+        clk         : in  STD_LOGIC;
+        rst         : in  STD_LOGIC;
+        instr_in    : in  STD_LOGIC_VECTOR(15 downto 0);
+        instr_valid : in  STD_LOGIC;
+        stall_out   : out STD_LOGIC;
+        result_out  : out STD_LOGIC_VECTOR(15 downto 0);
+        flags_out   : out STD_LOGIC_VECTOR(3 downto 0)
+    );
+end pipeline_alu;
+
+architecture Behavioral of pipeline_alu is
+
+---------------------------------------------------------------------
+--  BAGIAN NOVA — Register File + ID Stage (Decode)
 ---------------------------------------------------------------------
 
     type reg_array is array (0 to 15) of std_logic_vector(15 downto 0);
@@ -24,29 +46,29 @@
 --  BAGIAN HAITSAM — Hazard Detection + Stall Logic
 ---------------------------------------------------------------------
 
-signal hazard_detected : std_logic;
+    signal hazard_detected : std_logic;
 
-process(id_rs1, id_rs2, ex_rd, ex_valid, fg_rd, fg_valid, wb_rd, wb_valid)
-begin
-    hazard_detected <= '0';
+    process(id_rs1, id_rs2, ex_rd, ex_valid, fg_rd, fg_valid, wb_rd, wb_valid)
+    begin
+        hazard_detected <= '0';
 
-    if ex_valid = '1' and (ex_rd = id_rs1 or ex_rd = id_rs2) then
-        hazard_detected <= '1';
-    end if;
+        if ex_valid = '1' and (ex_rd = id_rs1 or ex_rd = id_rs2) then
+            hazard_detected <= '1';
+        end if;
 
-    if fg_valid = '1' and (fg_rd = id_rs1 or fg_rd = id_rs2) then
-        hazard_detected <= '1';
-    end if;
+        if fg_valid = '1' and (fg_rd = id_rs1 or fg_rd = id_rs2) then
+            hazard_detected <= '1';
+        end if;
 
-    if wb_valid = '1' and (wb_rd = id_rs1 or wb_rd = id_rs2) then
-        hazard_detected <= '1';
-    end if;
-end process;
+        if wb_valid = '1' and (wb_rd = id_rs1 or wb_rd = id_rs2) then
+            hazard_detected <= '1';
+        end if;
+    end process;
 
-stall_out <= hazard_detected;
+    stall_out <= hazard_detected;
 
 ---------------------------------------------------------------------
--- 🔵 BAGIAN NOVA — Pipeline Register ID → EX (with bubble)
+--  BAGIAN NOVA — Pipeline Register ID → EX (with bubble)
 ---------------------------------------------------------------------
 
 process(clk)
@@ -97,8 +119,6 @@ begin
         when others => ex_result_raw <= (others => '0');
     end case;
 end process;
-
-
 
 ---------------------------------------------------------------------
 -- BAGIAN SABBIA — EX → FG Pipeline Register
