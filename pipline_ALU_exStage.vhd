@@ -1,4 +1,29 @@
 ---------------------------------------------------------------------
+--  BAGIAN HAITSAM — Hazard Detection + Stall Logic
+---------------------------------------------------------------------
+
+signal hazard_detected : std_logic;
+
+process(id_rs1, id_rs2, ex_rd, ex_valid, fg_rd, fg_valid, wb_rd, wb_valid)
+begin
+    hazard_detected <= '0';
+
+    if ex_valid = '1' and (ex_rd = id_rs1 or ex_rd = id_rs2) then
+        hazard_detected <= '1';
+    end if;
+
+    if fg_valid = '1' and (fg_rd = id_rs1 or fg_rd = id_rs2) then
+        hazard_detected <= '1';
+    end if;
+
+    if wb_valid = '1' and (wb_rd = id_rs1 or wb_rd = id_rs2) then
+        hazard_detected <= '1';
+    end if;
+end process;
+
+stall_out <= hazard_detected;
+
+---------------------------------------------------------------------
 -- BAGIAN SABBIA — ALU (EX Stage)
 ---------------------------------------------------------------------
 
@@ -41,7 +66,21 @@ begin
     end if;
 end process;
 
+---------------------------------------------------------------------
+--  BAGIAN HAITSAM — FLAG GENERATION (FG Stage)
+---------------------------------------------------------------------
 
+process(fg_result, fg_valid)
+begin
+    if fg_valid = '1' then
+        fg_flags(3) <= '1' when fg_result = x"0000" else '0'; -- Zero
+        fg_flags(0) <= fg_result(15);                        -- Negative
+        fg_flags(2) <= '0'; -- Carry (simplified)
+        fg_flags(1) <= '0'; -- Overflow (simplified)
+    else
+        fg_flags <= "0000";
+    end if;
+end process;
 
 ---------------------------------------------------------------------
 -- BAGIAN SABBIA — FG → WB Pipeline Register + WB Stage
